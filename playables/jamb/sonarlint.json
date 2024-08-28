@@ -1,0 +1,7 @@
+{
+    "sonarlint": {
+      "exclusions": [
+        "D:/DOWNLOADS/Node.js/shortBuilder/playables/ant0art.github.io/playables/jamb/index.html"
+      ]
+    }
+  }
