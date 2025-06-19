@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ru">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Загрузка локализаций</title>
+        <style>
+            html,
+            body {
+                box-sizing: border-box;
+            }
+            *,
+            *:before,
+            *:after {
+                box-sizing: inherit;
+            }
+            body {
+                font-family: sans-serif;
+                max-width: 600px;
+                margin: 2rem auto;
+                padding: 1rem;
+                background: #f9f9f9;
+                border-radius: 12px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            }
+            label {
+                display: block;
+                margin-top: 1rem;
+            }
+            input,
+            button {
+                font-size: 1rem;
+                padding: 0.5rem;
+                margin-top: 0.5rem;
+                width: 100%;
+                border-radius: 6px;
+                border: 1px solid #ccc;
+                box-sizing: border-box;
+            }
+            button {
+                cursor: pointer;
+                background: #1976d2;
+                color: #fff;
+                border: none;
+                margin-top: 1rem;
+                transition: background 0.2s;
+            }
+            button:hover {
+                background: #1565c0;
+            }
+            pre {
+                background: #eee;
+                padding: 0.5rem;
+                border-radius: 6px;
+                margin-top: 1rem;
+                white-space: pre-wrap;
+                word-break: break-all;
+            }
+        </style>
+    </head>
+    <body>
+        <h2>Загрузка локализаций из Google Таблицы</h2>
+        <label for="sheetUrl">Ссылка на таблицу:</label>
+        <input
+            id="sheetUrl"
+            placeholder="https://docs.google.com/spreadsheets/d/..."
+        />
+        <button id="downloadBtn">Скачать JSON</button>
+        <pre id="log"></pre>
+
+        <script>
+            const DEPLOY_ID =
+                'AKfycbyOZr47TzmZegIjL6wTy_yYlia09ap4pLnBOizC77-RV_EtcjYbxBGLDXVEIYAwvsiH';
+
+            function extractSheetId(url) {
+                const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+                return match ? match[1] : null;
+            }
+
+            async function fetchJsonFromAppsScript(sheetId) {
+                const url = `https://script.google.com/macros/s/${DEPLOY_ID}/exec?id=${sheetId}`;
+                const response = await fetch(url);
+                if (!response.ok)
+                    throw new Error('Ошибка загрузки: ' + response.status);
+                return await response.json();
+            }
+
+            async function saveJsonFileInteractive(json) {
+                // File System Access API (Chrome/Edge)
+                if (window.showSaveFilePicker) {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: 'locals.json',
+                        types: [
+                            {
+                                description: 'JSON файл',
+                                accept: { 'application/json': ['.json'] },
+                            },
+                        ],
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(json);
+                    await writable.close();
+                } else {
+                    // Fallback for all browsers
+                    const blob = new Blob([json], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'locals.json';
+                    document.body.appendChild(a);
+                    a.click();
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }, 100);
+                }
+            }
+
+            document
+                .getElementById('downloadBtn')
+                .addEventListener('click', async () => {
+                    const log = document.getElementById('log');
+                    log.textContent = '';
+                    const url = document
+                        .getElementById('sheetUrl')
+                        .value.trim();
+                    const sheetId = extractSheetId(url);
+                    if (!sheetId) {
+                        log.textContent = 'Неверная ссылка на таблицу.';
+                        return;
+                    }
+
+                    try {
+                        let saveHandle = null;
+                        let useFilePicker = !!window.showSaveFilePicker;
+                        let jsonString = null;
+                        if (useFilePicker) {
+                            // Сначала спрашиваем путь сохранения
+                            saveHandle = await window.showSaveFilePicker({
+                                suggestedName: 'locals.json',
+                                types: [
+                                    {
+                                        description: 'JSON файл',
+                                        accept: {
+                                            'application/json': ['.json'],
+                                        },
+                                    },
+                                ],
+                            });
+                        }
+                        log.textContent = 'Загружаем JSON...';
+                        const json = await fetchJsonFromAppsScript(sheetId);
+                        jsonString = JSON.stringify(json, null, 2);
+                        log.textContent += '\nГотово, сохраняем файл...';
+                        if (useFilePicker && saveHandle) {
+                            const writable = await saveHandle.createWritable();
+                            await writable.write(jsonString);
+                            await writable.close();
+                        } else {
+                            // Fallback для всех браузеров
+                            const blob = new Blob([jsonString], {
+                                type: 'application/json',
+                            });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = 'locals.json';
+                            document.body.appendChild(a);
+                            a.click();
+                            setTimeout(() => {
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(url);
+                            }, 100);
+                        }
+                        log.textContent += '\nФайл сохранён.';
+                    } catch (e) {
+                        log.textContent += `\nОшибка: ${e.message}\n\nВозможно, скрипт Google Apps Script не опубликован для всех.`;
+                    }
+                });
+        </script>
+    </body>
+</html>
